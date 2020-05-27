@@ -2,7 +2,7 @@ from threading import *
 
 import cv2
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, QThread
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtWidgets import QMainWindow, QFileDialog
 from deepface import DeepFace
@@ -36,20 +36,16 @@ def highlightFace(net, frame, conf_threshold=0.6):
     return frameOpencvDnn, faceBoxes
 
 
-
-
-class Analyze(Thread):
+class Analyze(QThread):
 
     def __init__(self, image):
         super().__init__()
-        Thread.__init__(self)
+        QThread.__init__(self)
         self.image = image
         self.fileName = None
         self.response = None
-        Thread.run(self)
 
     def run(self):
-
         print(active_count())
         self.fileName = f'image/0.png'
         cv2.imwrite(self.fileName, self.image)
@@ -63,10 +59,12 @@ class Analyze(Thread):
         return self.fileName
 
 
-class YapayZekaProjeWidget(QMainWindow):
+class YapayZekaProjeWidget(QMainWindow, QThread):
 
     def __init__(self, parent=None):
         super(YapayZekaProjeWidget, self).__init__(parent=parent)
+        QThread.__init__(self)
+        QThread.start(self)
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.setFixedSize(931, 675)
@@ -74,6 +72,18 @@ class YapayZekaProjeWidget(QMainWindow):
         self.functionsUnit()
         self.anylsis = None
         self.ui.actionStop_Cam.setEnabled(False)
+
+    def analyze(self):
+
+        self.anylsis = Analyze(self.copyImage)
+        self.anylsis.run()
+        resp = self.anylsis.returnResponse()
+        self.ui.lbl_yas.setText(str(round(resp["age"])))
+        self.ui.lbl_cinsiyet.setText(str(resp["gender"]))
+        self.ui.lbl_duygu.setText(str(resp["dominant_emotion"]))
+        self.ui.lbl_irk.setText(str(resp["dominant_race"]))
+        fileName = self.anylsis.returnFileName()
+        self.loadImage(fileName)
 
     def functionsUnit(self):
         faceProto = "models/opencv_face_detector.pbtxt"
@@ -135,18 +145,6 @@ class YapayZekaProjeWidget(QMainWindow):
         self.copyImage = self.frame.copy()
         self.displayImage(resultImg)
 
-    def analyze(self):
-
-        self.anylsis = Analyze(self.copyImage)
-        self.anylsis.run()
-        resp = self.anylsis.returnResponse()
-        self.ui.lbl_yas.setText(str(round(resp["age"])))
-        self.ui.lbl_cinsiyet.setText(str(resp["gender"]))
-        self.ui.lbl_duygu.setText(str(resp["dominant_emotion"]))
-        self.ui.lbl_irk.setText(str(resp["dominant_race"]))
-        fileName = self.anylsis.returnFileName()
-        self.loadImage(fileName)
-
     def displayImage(self, img):
         qFormat = QImage.Format_Indexed8
         if len(img.shape) == 3:
@@ -203,6 +201,9 @@ if __name__ == '__main__':
 
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle("fusion")
+    t = Thread(target=YapayZekaProjeWidget)
+    t.start()
     mainWindow = YapayZekaProjeWidget()
+    t.join()
     mainWindow.show()
     sys.exit(app.exec_())
