@@ -6,8 +6,13 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtWidgets import QMainWindow, QFileDialog
 from deepface import DeepFace
-
+import tensorflow as tf
 from ui_mainWindow import Ui_MainWindow
+from keras import backend as K
+import os
+
+os.environ["CUDA_DEVICE_ORDER"] = "0000:01:00.0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 def highlightFace(net, frame, conf_threshold=0.6):
@@ -31,17 +36,28 @@ def highlightFace(net, frame, conf_threshold=0.6):
     return frameOpencvDnn, faceBoxes
 
 
+
+
 class Analyze(Thread):
+
     def __init__(self, image):
         super().__init__()
+        Thread.__init__(self)
         self.image = image
         self.fileName = None
+        self.response = None
+        Thread.run(self)
 
     def run(self):
+
+        print(active_count())
         self.fileName = f'image/0.png'
         cv2.imwrite(self.fileName, self.image)
-        response = DeepFace.analyze(self.image)
-        return response
+        self.response = DeepFace.analyze(self.image)
+        K.clear_session()
+
+    def returnResponse(self):
+        return self.response
 
     def returnFileName(self):
         return self.fileName
@@ -57,6 +73,7 @@ class YapayZekaProjeWidget(QMainWindow):
         self.initSlots()
         self.functionsUnit()
         self.anylsis = None
+        self.ui.actionStop_Cam.setEnabled(False)
 
     def functionsUnit(self):
         faceProto = "models/opencv_face_detector.pbtxt"
@@ -86,6 +103,7 @@ class YapayZekaProjeWidget(QMainWindow):
         self.ui.actionExit.triggered.connect(lambda: QtCore.QCoreApplication.instance().quit())
 
     def startCam(self):
+        self.ui.actionStop_Cam.setEnabled(True)
         self.capture = cv2.VideoCapture(0)
         self.Kontrol = True
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 607)
@@ -96,10 +114,8 @@ class YapayZekaProjeWidget(QMainWindow):
 
     def update_frame(self):
         ret, self.frame = self.capture.read()
-        self.copyImage = self.frame.copy()
+
         resultImg, faceBoxes = highlightFace(self.faceNet, self.frame)
-        if not faceBoxes:
-            print("Yüz Tespit Edilemedi")
 
         for faceBox in faceBoxes:
             face = self.frame[max(0, faceBox[1] - self.padding):
@@ -116,14 +132,15 @@ class YapayZekaProjeWidget(QMainWindow):
             age = self.ageList[agePreds[0].argmax()]
             cv2.putText(resultImg, f'{gender}, {age}', (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
                         (0, 255, 255), 2, cv2.LINE_AA)
-
+        self.copyImage = self.frame.copy()
         self.displayImage(resultImg)
 
     def analyze(self):
-        self.copyImage = self.frame.copy()
+
         self.anylsis = Analyze(self.copyImage)
-        resp = self.anylsis.run()
-        self.ui.lbl_yas.setText(str(resp["age"]))
+        self.anylsis.run()
+        resp = self.anylsis.returnResponse()
+        self.ui.lbl_yas.setText(str(round(resp["age"])))
         self.ui.lbl_cinsiyet.setText(str(resp["gender"]))
         self.ui.lbl_duygu.setText(str(resp["dominant_emotion"]))
         self.ui.lbl_irk.setText(str(resp["dominant_race"]))
