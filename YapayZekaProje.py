@@ -124,7 +124,7 @@ class YapayZekaProjeWidget(QMainWindow, QThread):
 
     def update_frame(self):
         ret, self.frame = self.capture.read()
-
+        self.copyImage = self.frame.copy()
         resultImg, faceBoxes = highlightFace(self.faceNet, self.frame)
 
         for faceBox in faceBoxes:
@@ -142,7 +142,7 @@ class YapayZekaProjeWidget(QMainWindow, QThread):
             age = self.ageList[agePreds[0].argmax()]
             cv2.putText(resultImg, f'{gender}, {age}', (faceBox[0], faceBox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
                         (0, 255, 255), 2, cv2.LINE_AA)
-        self.copyImage = self.frame.copy()
+
         self.displayImage(resultImg)
 
     def displayImage(self, img):
