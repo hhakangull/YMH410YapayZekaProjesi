@@ -1,15 +1,15 @@
+import os
 from threading import *
 
 import cv2
-from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import QTimer, QThread
-from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtWidgets import QMainWindow, QFileDialog
-from deepface import DeepFace
 import tensorflow as tf
+from PyQt5 import QtWidgets, QtCore
+from PyQt5.QtCore import QTimer
+from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtWidgets import QMainWindow, QFileDialog, QMessageBox
+from deepface import DeepFace
+
 from ui_mainWindow import Ui_MainWindow
-from keras import backend as K
-import os
 
 os.environ["CUDA_DEVICE_ORDER"] = "0000:01:00.0"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -36,12 +36,11 @@ def highlightFace(net, frame, conf_threshold=0.6):
     return frameOpencvDnn, faceBoxes
 
 
-class Analyze(QThread):
-
-    def __init__(self, image):
-        super().__init__()
-        QThread.__init__(self)
-        self.image = image
+class Analyze(Thread):
+    def __init__(self, ui):
+        Thread.__init__(self)
+        self.image = None
+        self.ui = ui
         self.fileName = None
         self.response = None
 
@@ -50,40 +49,51 @@ class Analyze(QThread):
         self.fileName = f'image/0.png'
         cv2.imwrite(self.fileName, self.image)
         self.response = DeepFace.analyze(self.image)
-        K.clear_session()
+        self.UI_Set()
 
-    def returnResponse(self):
-        return self.response
+    def UI_Set(self):
+        self.ui.lbl_cinsiyet.clear()
+        self.ui.lbl_duygu.clear()
+        self.ui.lbl_yas.clear()
+        self.ui.lbl_irk.clear()
+        if self.ui.cins_check.isChecked():
+            self.ui.lbl_cinsiyet.setText(str(self.response["gender"]))
+        if self.ui.duygu_check.isChecked():
+            self.ui.lbl_duygu.setText(str(self.response["dominant_emotion"]))
+        if self.ui.yas_check.isChecked():
+            self.ui.lbl_yas.setText(str(round(self.response["age"])))
+        if self.ui.irk_check.isChecked():
+            self.ui.lbl_irk.setText(str(self.response["dominant_race"]))
 
-    def returnFileName(self):
-        return self.fileName
+        self.ui.lbl_foto.setPixmap(QPixmap(self.fileName))
+        self.ui.lbl_foto.setScaledContents(True)
+        tf.keras.backend.clear_session()
+
+    def getImage(self, image):
+        self.image = image
 
 
-class YapayZekaProjeWidget(QMainWindow, QThread):
+class YapayZekaProjeWidget(QMainWindow, Thread):
 
     def __init__(self, parent=None):
         super(YapayZekaProjeWidget, self).__init__(parent=parent)
-        QThread.__init__(self)
-        QThread.start(self)
+        Thread.__init__(self)
+        Thread.start(self)
+        print(active_count())
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
         self.setFixedSize(931, 675)
         self.initSlots()
         self.functionsUnit()
-        self.anylsis = None
+        self.analiz = Analyze(self.ui)
+        self.ui.btn_startAnalysis.setEnabled(False)
         self.ui.actionStop_Cam.setEnabled(False)
+        self.ui.btn_ayar.setEnabled(False)
 
     def analyze(self):
-
-        self.anylsis = Analyze(self.copyImage)
-        self.anylsis.run()
-        resp = self.anylsis.returnResponse()
-        self.ui.lbl_yas.setText(str(round(resp["age"])))
-        self.ui.lbl_cinsiyet.setText(str(resp["gender"]))
-        self.ui.lbl_duygu.setText(str(resp["dominant_emotion"]))
-        self.ui.lbl_irk.setText(str(resp["dominant_race"]))
-        fileName = self.anylsis.returnFileName()
-        self.loadImage(fileName)
+        QMessageBox.information(self, "Bilgi", "Analiz Başlıyor...")
+        self.analiz.getImage(self.copyImage)
+        self.analiz.run()
 
     def functionsUnit(self):
         faceProto = "models/opencv_face_detector.pbtxt"
@@ -104,7 +114,7 @@ class YapayZekaProjeWidget(QMainWindow, QThread):
         self.input_shape = (224, 224)
 
     def initSlots(self):
-
+        self.kontrol = False
         self.ui.actionResim_Ekle.triggered.connect(self.getImageFromFile)
         self.ui.btn_ayar.clicked.connect(self.loadModels)
         self.ui.actionStart_Cam.triggered.connect(self.startCam)
@@ -113,6 +123,7 @@ class YapayZekaProjeWidget(QMainWindow, QThread):
         self.ui.actionExit.triggered.connect(lambda: QtCore.QCoreApplication.instance().quit())
 
     def startCam(self):
+        self.ui.btn_startAnalysis.setEnabled(True)
         self.ui.actionStop_Cam.setEnabled(True)
         self.capture = cv2.VideoCapture(0)
         self.Kontrol = True
@@ -173,6 +184,7 @@ class YapayZekaProjeWidget(QMainWindow, QThread):
             print(fileName)
             self.resim = str(fileName)
             self.loadImage(fileName)
+            self.ui.btn_ayar.setEnabled(True)
         else:
             self.resimCheck = False
 
@@ -182,18 +194,22 @@ class YapayZekaProjeWidget(QMainWindow, QThread):
         self.ui.lbl_foto.setScaledContents(True)
 
     def loadModels(self):
-        print(self.resim)
+        self.ui.lbl_cinsiyet.clear()
+        self.ui.lbl_duygu.clear()
+        self.ui.lbl_yas.clear()
+        self.ui.lbl_irk.clear()
+        QMessageBox.information(self, "Bilgi", "Analiz Başlıyor...")
         path = self.resim
         img = cv2.imread(path)
         resp = DeepFace.analyze(img)
-        self.age = resp["age"]
-        self.gender = resp["gender"]
-        self.dominant_emotion = resp["dominant_emotion"]
-        self.dominant_race = resp["dominant_race"]
-        self.ui.lbl_yas.setText(str(resp["age"]))
-        self.ui.lbl_cinsiyet.setText(str(resp["gender"]))
-        self.ui.lbl_duygu.setText(str(resp["dominant_emotion"]))
-        self.ui.lbl_irk.setText(str(resp["dominant_race"]))
+        if self.ui.cins_check.isChecked():
+            self.ui.lbl_cinsiyet.setText(str(resp["gender"]))
+        if self.ui.duygu_check.isChecked():
+            self.ui.lbl_duygu.setText(str(resp["dominant_emotion"]))
+        if self.ui.yas_check.isChecked():
+            self.ui.lbl_yas.setText(str(round(resp["age"])))
+        if self.ui.irk_check.isChecked():
+            self.ui.lbl_irk.setText(str(resp["dominant_race"]))
 
 
 if __name__ == '__main__':
