@@ -14,6 +14,8 @@ from ui_mainWindow import Ui_MainWindow
 os.environ["CUDA_DEVICE_ORDER"] = "0000:01:00.0"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
+import asyncio
+
 
 def highlightFace(net, frame, conf_threshold=0.6):
     frameOpencvDnn = frame.copy()
@@ -36,16 +38,14 @@ def highlightFace(net, frame, conf_threshold=0.6):
     return frameOpencvDnn, faceBoxes
 
 
-class Analyze(Thread):
+class Analyze:
     def __init__(self, ui):
-        Thread.__init__(self)
         self.image = None
         self.ui = ui
         self.fileName = None
         self.response = None
 
-    def run(self):
-        print(active_count())
+    async def run(self):
         self.fileName = f'image/0.png'
         cv2.imwrite(self.fileName, self.image)
         self.response = DeepFace.analyze(self.image)
@@ -73,6 +73,19 @@ class Analyze(Thread):
         self.image = image
 
 
+global loop
+
+
+async def deneme(image):
+    global loop
+    filename = f'image/0.png'
+    islem = cv2.imwrite(filename, image)
+    response = loop.create_task(DeepFace.analyze(image))
+    await asyncio.wait(response)
+    print(response)
+
+
+# noinspection DuplicatedCode
 class YapayZekaProjeWidget(QMainWindow):
 
     def __init__(self, parent=None):
@@ -82,15 +95,21 @@ class YapayZekaProjeWidget(QMainWindow):
         self.setFixedSize(931, 675)
         self.initSlots()
         self.functionsUnit()
-        self.analiz = Analyze(self.ui)
+
         self.ui.btn_startAnalysis.setEnabled(False)
         self.ui.actionStop_Cam.setEnabled(False)
         self.ui.btn_ayar.setEnabled(False)
 
     def analyze(self):
-        QMessageBox.information(self, "Bilgi", "Analiz Başlıyor...")
-        self.analiz.getImage(self.copyImage)
-        self.analiz.run()
+        global loop
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(deneme(self.copyImage))
+        loop.close()
+
+        # self.analiz = Analyze(self.ui)
+        # QMessageBox.information(self, "Bilgi", "Analiz Başlıyor...")
+        # self.analiz.getImage(self.copyImage)
+        # self.analiz.run()
 
     def functionsUnit(self):
         faceProto = "models/opencv_face_detector.pbtxt"
@@ -102,7 +121,7 @@ class YapayZekaProjeWidget(QMainWindow):
 
         self.MODEL_MEAN_VALUES = (78.4263377603, 87.7689143744, 114.895847746)
         self.ageList = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
-        self.genderList = ['Erkek', 'Kadın']
+        self.genderList = ['Male', 'Female']
         self.padding = 20
         self.faceNet = cv2.dnn.readNet(faceModel, faceProto)
         self.ageNet = cv2.dnn.readNet(ageModel, ageProto)
@@ -214,9 +233,6 @@ if __name__ == '__main__':
 
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle("fusion")
-    t = Thread(target=YapayZekaProjeWidget)
-    t.start()
     mainWindow = YapayZekaProjeWidget()
-    t.join()
     mainWindow.show()
     sys.exit(app.exec_())
